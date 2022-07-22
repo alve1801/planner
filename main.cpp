@@ -40,12 +40,16 @@ void pt(char*s,int x,int y,bool bold=0){
 	attron(COLOR_PAIR(1));attroff(A_BOLD);
 }
 
-void ps(char*s,int x,int y){
+void ps(char*s,int x,int y,int c=-1){
 	// because ncurses treats newlines in a very stupid way
 	int sx=x,sy=y;
 	for(int i=0;s[i];i++)
-		if(s[i]==10)sx++,sy=y;
-		else mvaddch(sx,sy++,s[i]);
+		if(s[i]==10)sx++,sy=y; // also test if were at edge of screen
+		else{
+			if(i==c)attron(COLOR_PAIR(2));
+			mvaddch(sx,sy++,s[i]);
+			attron(COLOR_PAIR(1));
+		}
 }
 
 int s,c;bool t;
@@ -59,6 +63,7 @@ int main(){
 	curs_set(FALSE);
 	cbreak();
 	//timeout(1); // ?
+	//keypad(stdscr,1);
 
 	init_pair(1, COLOR_WHITE, COLOR_BLACK);
 	//init_pair(2, COLOR_BLACK, COLOR_RED);
@@ -66,7 +71,7 @@ int main(){
 
 	for(;;){
 		clear();
-		if(t)ps("Edit mode",0,1);
+		if(t)ps("Edit mode",0,1); // this takes an oddly long time to clear after we exit edit mode...
 		ps("Quests:",1,1);
 		for(int i=0;i<quests.size();i++)
 			pt(quests[i],i+2,3,i==s);
@@ -74,19 +79,31 @@ int main(){
 		pt("New Quest",quests.size()+2,3,s==quests.size());
 
 		if(s<quests.size())
-			ps(quests[s],2,ttlen+3);
+			ps(quests[s],2,ttlen+3,t?c:-1);
 		else
-			ps("Create a new quest",1,ttlen+3);
+			ps("Create a new quest",1,ttlen+3,t?c:-1);
 
 		if(t){
-			char c=getch();
-			if(c==27){save();t=0;}
+			int a=getch();
+			printf("%i\n",a);
+			switch(a){
+				case 27:save();t=0;break;
+				case KEY_LEFT:if(c)c--;break;
+				case KEY_RIGHT:c++;break;
+				default:break;
+			}
+			if(0x20<=a&&a<0x7f)quests[s][c++]=a;
+
 		}else{
 			switch(getch()){
 				case'q':save();endwin();return 0; // do we need the save here?
 				case'w':s--;break;
 				case's':s++;break;
-				case 10:case 27:t=1;if(s==quests.size())quests.push_back((char*)malloc(1000));break; // XXX create new quest if on last option
+				case 10:case 27:
+					t=1;
+					if(s==quests.size())quests.push_back((char*)malloc(1000)); // fuck man idk
+					break;
+				default:break;
 			}
 
 			s%=(quests.size()+1);
@@ -99,6 +116,8 @@ int main(){
 
 //mvaddch(x,y,c)
 //mvprintw(y,x,str)
+
+// when we start editing a quest, it gets copied to a 0xffff-byte buffer, and then copied back when were done?
 
 /*
 format of savefile (called "quests"):
